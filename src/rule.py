@@ -1,6 +1,8 @@
 import os
 import sys
+import time
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
 from linebot.exceptions import InvalidSignatureError
 from linebot.v3.webhook import WebhookParser
 from linebot.v3.messaging import (
@@ -12,6 +14,7 @@ from linebot.v3.messaging import (
     QuickReply,
     QuickReplyItem,
     MessageAction,
+    PushMessageRequest,
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from datetime import datetime, timezone, timedelta
@@ -20,6 +23,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from src.find_answer import find_option
 from src.utils import (
+    get_jst_now,
     get_user_state,
     update_user_state,
     save_message_to_db,
@@ -31,14 +35,12 @@ from src.utils import (
 )
 from src.send_reminders import check_reminders
 
-# LINE API の認証情報
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
-LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 
 load_dotenv()
-
 channel_secret = os.getenv("LINE_CHANNEL_SECRET", None)
 channel_access_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", None)
+
+print(channel_secret)
 if channel_secret is None:
     print("Specify LINE_CHANNEL_SECRET as environment variable.")
     sys.exit(1)
@@ -53,9 +55,9 @@ async_api_client = AsyncApiClient(configuration)
 line_bot_api = AsyncMessagingApi(async_api_client)
 parser = WebhookParser(channel_secret)
 
-# 1分ごとにチェック
+JST = timezone(timedelta(hours=9))
 scheduler = BackgroundScheduler()
-scheduler.add_job(check_reminders, "interval", minutes=1)
+scheduler.add_job(check_reminders, "cron", hour=12, minute=0, second=0, timezone=JST)
 scheduler.start()
 
 
@@ -73,41 +75,35 @@ async def handle_callback(request: Request):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     for event in events:
+        user_id = event.source.user_id
+        step, research_id, last_question = get_user_state(user_id)
+
+        jst_dt = get_jst_now(event)
+
+        # follow・ブロック解除イベントの処理
+        # **ステップ 0: 初回メッセージ**
+        # 導入文・研究IDの入力の依頼
+        if event.type == "follow":
+            # update_user_state(user_id, 0)
+            time.sleep(0.5)
+            messages = [
+                # "初めまして！私の名前はBRECOBOTです。お友達登録していただきありがとうございます。",
+                # "これから一か月間、あなたが知りたいことの答えを探すお手伝いをさせていただきます。",
+                "ではさっそく、あなたの研究IDを教えてください。",
+            ]
+            await line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text=message) for message in messages],
+                )
+            )
+            update_user_state(user_id, 1, None, None, jst_dt)
+
         if not isinstance(event, MessageEvent):
             continue
         if not isinstance(event.message, TextMessageContent):
             continue
-        user_id = event.source.user_id
         user_message = event.message.text.strip()
-
-        step, research_id, last_question = get_user_state(user_id)
-
-        utc_timestamp = event.timestamp
-        utc_dt = datetime.utcfromtimestamp(
-            utc_timestamp / 1000
-        )  # UTCのタイムスタンプをミリ秒から秒に変換してから変換
-        jst_timezone = timezone(
-            timedelta(hours=9)
-        )  # 日本時間のタイムゾーンオブジェクトを作成
-        jst_dt = utc_dt.replace(tzinfo=timezone.utc).astimezone(
-            jst_timezone
-        )  # UTCを日本時間に変換
-
-        # **ステップ 0: 初回メッセージ**
-        # 導入文・研究IDの入力の依頼
-        # if step == 0:
-        #     messages = [
-        #         "初めまして！私の名前はBRECOBOTです。お友達登録していただきありがとうございます。",
-        #         "これから一か月間、あなたが知りたいことの答えを探すお手伝いをさせていただきます。",
-        #         "ではさっそく、あなたの研究IDを教えてください。",
-        #     ]
-        #     await line_bot_api.reply_message(
-        #         ReplyMessageRequest(
-        #             reply_token=event.reply_token,
-        #             messages=[TextMessage(text=message) for message in messages],
-        #         )
-        #     )
-        #     update_user_state(user_id, 1, None, None, jst_dt)
 
         # 使用前アンケート回答への依頼
         if step == 1:
@@ -170,12 +166,32 @@ async def handle_callback(request: Request):
                 update_user_state(user_id, step, None, again_user_choice)
 
             else:
-                await line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(text=ans) for ans in answer],
+                if len(answer) > 5:
+                    # 1回目のリプライ (5件まで)
+                    await line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text=ans) for ans in answer[:5]],
+                        )
                     )
-                )
+
+                    # 残りのメッセージは push_message で送信
+                    for i in range(5, len(answer), 5):
+                        await line_bot_api.push_message(
+                            PushMessageRequest(
+                                to=event.source.user_id,
+                                messages=[
+                                    TextMessage(text=ans) for ans in answer[i : i + 5]
+                                ],
+                            )
+                        )
+                else:
+                    await line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text=ans) for ans in answer],
+                        )
+                    )
                 if last_question:
                     last_question = last_question.split("\t")
                     reply_id = last_question[0]
@@ -200,7 +216,7 @@ async def handle_callback(request: Request):
             if user_message == "はい":
                 messages = [
                     "ご入力ありがとうございました。これにて私、BRECOBOTのご利用は終了とさせていただきます。インタビュー調査に参加してくださる方には、後ほど個別に研究者より連絡が参りますので、もうしばらくお待ちください。",
-                    "ご意見などがございましたら、研究事務局までお気軽にご連絡ください。ncc-ganchatbot＠ml.res.ncc.go.jp",
+                    "ご意見などがございましたら、研究事務局までお気軽にご連絡ください。\nncc-ganchatbot＠ml.res.ncc.go.jp",
                     "ご協力ありがとうございました。",
                 ]
                 await line_bot_api.reply_message(
@@ -222,3 +238,4 @@ async def handle_callback(request: Request):
                     )
                 )
                 send_confirm_message(user_id)
+    return "OK"

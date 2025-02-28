@@ -1,5 +1,5 @@
 services:
-  ncc-line-chatbot-poc:
+  ncc-line-chatbot-prod:
     restart: always
     build:
       context: ./
@@ -7,5 +7,5 @@ services:
     volumes:
       - ./data:/bot/data
     ports:
-      - 127.0.0.1:3000:3000
-    command: /bin/bash -c "source ~/.bashrc && rye run uvicorn rule:app --reload --host=0.0.0.0 --port=3000"
+      - 127.0.0.1:3300:3300
+    command: /bin/bash -c "source ~/.bashrc && rye run uvicorn rule:app --reload --host=0.0.0.0 --port=3300"

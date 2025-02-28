@@ -18,10 +18,6 @@ from linebot.v3.messaging import (
 from dotenv import load_dotenv
 
 
-# LINE API の認証情報
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
-LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
-
 load_dotenv()
 
 channel_secret = os.getenv("LINE_CHANNEL_SECRET", None)
@@ -35,6 +31,21 @@ async_api_client = AsyncApiClient(configuration)
 line_bot_api = AsyncMessagingApi(async_api_client)
 
 DB_PATH = "./data/outputs/chatbot.db"
+
+
+def get_jst_now(event):
+
+    utc_timestamp = event.timestamp
+    utc_dt = datetime.datetime.utcfromtimestamp(
+        utc_timestamp / 1000
+    )  # UTCのタイムスタンプをミリ秒から秒に変換してから変換
+    jst_timezone = datetime.timezone(
+        datetime.timedelta(hours=9)
+    )  # 日本時間のタイムゾーンオブジェクトを作成
+    jst_dt = utc_dt.replace(tzinfo=datetime.timezone.utc).astimezone(
+        jst_timezone
+    )  # UTCを日本時間に変換
+    return jst_dt
 
 
 # SQLite データベース（初回起動時にテーブルを作成）
@@ -114,7 +125,7 @@ def get_user_state(user_id):
     row = cursor.fetchone()
 
     conn.close()
-    return row if row else (1, None, None)
+    return row if row else (0, None, None)
 
 
 # ユーザーの状態を更新
@@ -157,7 +168,9 @@ def update_user_state(
         ) = row
 
         # research_id の更新ロジック（すでにある場合は変更しない）
-        if existing_research_id is None and research_id is not None:
+        if step == 1:
+            pass  # 新しい research_id を適用
+        elif existing_research_id is None and research_id is not None:
             pass  # 新しい research_id を適用
         else:
             research_id = existing_research_id  # 既存の値を保持
@@ -166,12 +179,12 @@ def update_user_state(
     if registration_time is not None:
         registration_time = registration_time
         # 3日後と1週間後のリマインダーを計算
-        reminder_3days = registration_time + datetime.timedelta(minutes=3)
-        reminder_7days = registration_time + datetime.timedelta(minutes=5)
-        reminder_14days = registration_time + datetime.timedelta(hours=7)
-        reminder_21days = registration_time + datetime.timedelta(hours=9)
-        before_the_last_day = registration_time + datetime.timedelta(hours=11)
-        after_use_ends = registration_time + datetime.timedelta(hours=13)
+        reminder_3days = registration_time + datetime.timedelta(days=3)
+        reminder_7days = registration_time + datetime.timedelta(days=7)
+        reminder_14days = registration_time + datetime.timedelta(days=14)
+        reminder_21days = registration_time + datetime.timedelta(days=21)
+        before_the_last_day = registration_time + datetime.timedelta(days=31)
+        after_use_ends = registration_time + datetime.timedelta(days=31+31)
 
     elif existing_registration_time is not None:
         registration_time = existing_registration_time

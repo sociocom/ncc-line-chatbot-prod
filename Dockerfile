@@ -17,4 +17,4 @@ RUN source ~/.bashrc && rye sync --no-lock
 
 COPY src /bot/
 
-EXPOSE 3000
+EXPOSE 3300

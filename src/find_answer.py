@@ -17,6 +17,7 @@ class FaqService:
         self.model = SentenceTransformer(
             "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
         )
+        self.model.eval()
         self.embeddings = self.model.encode(self.questions.values)
 
     def find_similar(self, input_text):

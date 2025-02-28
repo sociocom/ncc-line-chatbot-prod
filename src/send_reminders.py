@@ -17,7 +17,7 @@ line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 def check_reminders():
     """リマインダーを確認し、送信する"""
     now = datetime.datetime.now(pytz.timezone("Asia/Tokyo"))
-    one_minute_ago = now - datetime.timedelta(minutes=1)
+    one_day_ago = now - datetime.timedelta(days=1)
 
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
@@ -26,7 +26,7 @@ def check_reminders():
         cursor.execute(
             "SELECT user_id FROM user_state WHERE reminder_3days BETWEEN ? AND ?",
             (
-                one_minute_ago.strftime("%Y-%m-%d %H:%M:%S"),
+                one_day_ago.strftime("%Y-%m-%d %H:%M:%S"),
                 now.strftime("%Y-%m-%d %H:%M:%S"),
             ),
         )
@@ -37,7 +37,7 @@ def check_reminders():
             line_bot_api.push_message(
                 user_id,
                 TextSendMessage(
-                    text="📅 登録から3日目です！調子はいかがですか？何か乳がんについて知りたいことがありましたら私までお気軽におたずねください。"
+                    text="調子はいかがですか？何か乳がんについて知りたいことがありましたら私までお気軽におたずねください。"
                 ),
             )
             print("3日後リマインダーの送信")
@@ -47,7 +47,7 @@ def check_reminders():
         cursor.execute(
             "SELECT user_id FROM user_state WHERE reminder_7days BETWEEN ? AND ?",
             (
-                one_minute_ago.strftime("%Y-%m-%d %H:%M:%S"),
+                one_day_ago.strftime("%Y-%m-%d %H:%M:%S"),
                 now.strftime("%Y-%m-%d %H:%M:%S"),
             ),
         )
@@ -58,7 +58,7 @@ def check_reminders():
             line_bot_api.push_message(
                 user_id,
                 TextSendMessage(
-                    text="⏳ 登録から1週間です！調子はいかがですか？何か乳がんについて知りたいことがありましたら私までお気軽におたずねください。"
+                    text="調子はいかがですか？何か乳がんについて知りたいことがありましたら私までお気軽におたずねください。"
                 ),
             )
             print("1週間後リマインダーの送信")
@@ -68,18 +68,18 @@ def check_reminders():
         cursor.execute(
             "SELECT user_id FROM user_state WHERE reminder_14days BETWEEN ? AND ?",
             (
-                one_minute_ago.strftime("%Y-%m-%d %H:%M:%S"),
+                one_day_ago.strftime("%Y-%m-%d %H:%M:%S"),
                 now.strftime("%Y-%m-%d %H:%M:%S"),
             ),
         )
         users_14days = cursor.fetchall()
-        
+
         for user in users_14days:
             user_id = user[0]
             line_bot_api.push_message(
                 user_id,
                 TextSendMessage(
-                    text="⏳ 登録から2週間です！調子はいかがですか？何か乳がんについて知りたいことがありましたら私までお気軽におたずねください。"
+                    text="調子はいかがですか？何か乳がんについて知りたいことがありましたら私までお気軽におたずねください。"
                 ),
             )
             print("2週間後リマインダーの送信")
@@ -89,7 +89,7 @@ def check_reminders():
         cursor.execute(
             "SELECT user_id FROM user_state WHERE reminder_21days BETWEEN ? AND ?",
             (
-                one_minute_ago.strftime("%Y-%m-%d %H:%M:%S"),
+                one_day_ago.strftime("%Y-%m-%d %H:%M:%S"),
                 now.strftime("%Y-%m-%d %H:%M:%S"),
             ),
         )
@@ -100,7 +100,7 @@ def check_reminders():
             line_bot_api.push_message(
                 user_id,
                 TextSendMessage(
-                    text="⏳ 登録から3週間です！調子はいかがですか？何か乳がんについて知りたいことがありましたら私までお気軽におたずねください。"
+                    text="調子はいかがですか？何か乳がんについて知りたいことがありましたら私までお気軽におたずねください。"
                 ),
             )
             print("3週間後リマインダーの送信")
@@ -110,7 +110,7 @@ def check_reminders():
         cursor.execute(
             "SELECT user_id FROM user_state WHERE before_the_last_day BETWEEN ? AND ?",
             (
-                one_minute_ago.strftime("%Y-%m-%d %H:%M:%S"),
+                one_day_ago.strftime("%Y-%m-%d %H:%M:%S"),
                 now.strftime("%Y-%m-%d %H:%M:%S"),
             ),
         )
@@ -120,9 +120,7 @@ def check_reminders():
             user_id = user[0]
             line_bot_api.push_message(
                 user_id,
-                TextSendMessage(
-                    text="📅 明日で私のお手伝いできる期間が終了します。何か乳がんについて"
-                ),
+                TextSendMessage(text="明日で私のお手伝いできる期間が終了します。"),
             )
             print("利用日の前日リマインダーの送信")
             update_user_state(user_id, 4.9)
@@ -131,19 +129,17 @@ def check_reminders():
         cursor.execute(
             "SELECT user_id FROM user_state WHERE after_use_ends BETWEEN ? AND ?",
             (
-                one_minute_ago.strftime("%Y-%m-%d %H:%M:%S"),
+                one_day_ago.strftime("%Y-%m-%d %H:%M:%S"),
                 now.strftime("%Y-%m-%d %H:%M:%S"),
             ),
         )
         users_after_use_ends = cursor.fetchall()
 
         messages = [
-                """本日で利用期間が終了です。ご利用ありがとうございました。最後に、下記のURLにアクセスし、アンケートにお答えください。
-    http:// …
-    （回答の際に研究IDが必要です）
+            """本日で利用期間が終了です。ご利用ありがとうございました。最後に、下記のURLにアクセスし、アンケートにお答えください。\nhttp:// …\n（回答の際に研究IDが必要です）
     """,
-                "また、さらに詳しいご感想を聞かせていただきたく、インタビュー調査も予定しています。ご協力くださる方は、アンケートの最後の同意確認欄と、個人情報をご入力ください。",
-            ]
+            "また、さらに詳しいご感想を聞かせていただきたく、インタビュー調査も予定しています。ご協力くださる方は、アンケートの最後の同意確認欄と、個人情報をご入力ください。",
+        ]
         for user in users_after_use_ends:
             user_id = user[0]
             line_bot_api.push_message(
